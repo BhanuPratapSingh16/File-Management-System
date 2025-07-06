@@ -4,15 +4,15 @@ import java.io.InputStreamReader;
 
 public class Main {
     public static void main(String[] args) throws IOException {
-        Disk disk = new Disk(2048, 1000);
-        FileSystem fs = FileSystem.mount(disk, 2048, 1000);
+        Disk disk = new Disk(2048, 100);
+        FileSystem fs = FileSystem.mount(disk, 2048, 100);
         run(disk, fs);
     }
 
     public static void run(Disk disk, FileSystem fs) throws IOException{
         System.out.println("Type 'help' for commands list");
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        while(true) {
+        while(true){
             System.out.print(">> ");
             String command = reader.readLine();
             if (command == null || command.trim().isEmpty()) {
@@ -102,14 +102,12 @@ public class Main {
                     String fileContent = "";
                     while(true){
                         String line = br.readLine();
-                        if(line == null || line.trim().isEmpty()) {
-                            continue;
-                        }
                         if(line.equalsIgnoreCase("exit")) {
                             break;
                         }
                         fileContent += line + "\n";
                     }
+                    fileContent = fileContent.substring(0, fileContent.length()-1);
                     fs.writeFile(fileName, fileContent.getBytes());
                     break;
                 }
@@ -143,14 +141,12 @@ public class Main {
                     String appendData = "";
                     while(true){
                         String line = br.readLine();
-                        if(line == null || line.trim().isEmpty()) {
-                            continue;
-                        }
                         if(line.equalsIgnoreCase("exit")) {
                             break;
                         }
                         appendData += line + "\n";
                     }
+                    appendData = appendData.substring(0, appendData.length()-1);
                     fs.appendFile(fileName, appendData.getBytes());
                     break;
                 }
@@ -195,11 +191,11 @@ public class Main {
                 default:
                     System.out.println("Unknown command: " + cmd);
                     break;
+                }
             }
-        }
-        catch(RuntimeException e){
-            System.out.println("Error : "+e.getMessage());
-        }
+            catch(RuntimeException e){
+                System.out.println("Error : "+e.getMessage());
+            }
         }
     }
 }
