@@ -94,7 +94,7 @@ public class FileSystem {
     }
 
     public void listDirectory(){
-        System.out.println("Listing directories of : "+cur.name);
+        System.out.println("Listing files and directories of : "+cur.name);
         for(int block:cur.childrenBlocks){
             byte[] dirData = disk.readBlock(block);
             if(ByteBuffer.wrap(dirData).getInt() == 0){
