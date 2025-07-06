@@ -99,11 +99,11 @@ public class FileSystem {
             byte[] dirData = disk.readBlock(block);
             if(ByteBuffer.wrap(dirData).getInt() == 0){
                 Directory dir = Directory.deserialize(dirData);
-                System.out.println("Dir : "+dir.name+" Start block : "+dir.startBlock+" PArent dir : "+dir.parentBlock);
+                System.out.println("Dir : "+dir.name);
             }
             else{
                 MyFile file = MyFile.deserialize(dirData);
-                System.out.println("File : "+file.name+" Start block : "+file.startBlock+" Parent dir : "+file.parentBlock+" Size : "+file.size);
+                System.out.println("File : "+file.name+" Size : "+file.size);
             }
         }
     }
