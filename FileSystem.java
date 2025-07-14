@@ -1,4 +1,6 @@
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 import FAT.Directory;
 import FAT.FatTable;
@@ -14,7 +16,7 @@ public class FileSystem {
         this.disk = disk;
         this.sb = sb;
         this.fatTable = fatTable;
-        this.cur = new Directory("/", sb.rootDirStartBlock, -1);  // Default directory is root
+        this.cur = new Directory("/", sb.rootDirStartBlock, -1, "root");  // Default directory is root
     }
 
     public static FileSystem mount(Disk disk, int blockSize, int numBlocks) {
@@ -26,7 +28,7 @@ public class FileSystem {
             FatTable fat = new FatTable(numBlocks, sb.rootDirStartBlock+1);
             FileSystem fs = new FileSystem(disk, sb, fat);
 
-            Directory root = new Directory("/", sb.rootDirStartBlock, -1);
+            Directory root = new Directory("/", sb.rootDirStartBlock, -1, "root");
             fat.setEOF(sb.rootDirStartBlock);
             fs.cur = root;
             byte[] rootData = root.serialize();
@@ -63,10 +65,10 @@ public class FileSystem {
     }
 
     public String getCurrentDirectory() {
-        return cur.name;
+        return cur.getName();
     } 
     
-    public void createDirectory(String name){
+    public void createDirectory(String name, String currentUser){
         if(!checkValidName(name, false)){
             throw new IllegalArgumentException("Invalid directory name: " + name);
         }
@@ -78,13 +80,20 @@ public class FileSystem {
         byte[] serializedFatTable = fatTable.serialize();
         disk.writeBlock(sb.fatStartBlock, serializedFatTable);
 
-        Directory newDirectory = new Directory(name, startBlock, cur.startBlock);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        String currentDateTime = LocalDateTime.now().format(formatter);
+
+        Directory newDirectory = new Directory(name, startBlock, cur.getStartBlock(), currentUser);
+        newDirectory.setCreation(currentDateTime);
+        newDirectory.setSubFiles(0);
+        newDirectory.setSubFolders(0);
         byte[] serializedNewDir = newDirectory.serialize();
         disk.writeBlock(startBlock, serializedNewDir);
 
-        cur.childrenBlocks.add(startBlock);
+        cur.getChildrenBlocks().add(startBlock);
+        cur.setSubFolders(cur.getSubFolders()+1);
         byte[] serializedCurDir = cur.serialize();
-        disk.writeBlock(cur.startBlock, serializedCurDir);
+        disk.writeBlock(cur.getStartBlock(), serializedCurDir);
     }
 
     public void changeDirectory(String dirName){
@@ -94,16 +103,16 @@ public class FileSystem {
     }
 
     public void listDirectory(){
-        System.out.println("Listing files and directories of : "+cur.name);
-        for(int block:cur.childrenBlocks){
+        System.out.println("Listing files and directories of : "+cur.getName());
+        for(int block:cur.getChildrenBlocks()){
             byte[] dirData = disk.readBlock(block);
             if(ByteBuffer.wrap(dirData).getInt() == 0){
                 Directory dir = Directory.deserialize(dirData);
-                System.out.println("Dir : "+dir.name);
+                System.out.println("Dir : "+dir.getName());
             }
             else{
                 MyFile file = MyFile.deserialize(dirData);
-                System.out.println("File : "+file.name+" Size : "+file.size);
+                System.out.println("File : "+file.getName());
             }
         }
     }
@@ -112,22 +121,23 @@ public class FileSystem {
         Directory current = cur;
         Directory dir = (Directory)resolvePath(name);
         cur = current;
-        if(dir.isRoot){
+        if(dir.isRoot()){
             throw new RuntimeException("Cannot delete root directory.");
         }
-        if(dir.childrenBlocks.size()>0){
-            throw new RuntimeException("Cannot delete Directory : "+dir.name+" because it is not empty");
+        if(dir.getChildrenBlocks().size()>0){
+            throw new RuntimeException("Cannot delete Directory : "+dir.getName()+" because it is not empty");
         }
         
-        disk.writeBlock(dir.startBlock, new byte[sb.blockSize]);
+        disk.writeBlock(dir.getStartBlock(), new byte[sb.blockSize]);
         Directory parent = (Directory)getParentDirectory(dir, true);
-        parent.childrenBlocks.remove((Integer)dir.startBlock);
-        disk.writeBlock(parent.startBlock, parent.serialize());
+        parent.getChildrenBlocks().remove((Integer)dir.getStartBlock());
+        parent.setSubFolders(parent.getSubFolders()-1);
+        disk.writeBlock(parent.getStartBlock(), parent.serialize());
         
-        fatTable.freeBlocks(dir.startBlock);
+        fatTable.freeBlocks(dir.getStartBlock());
         disk.writeBlock(sb.fatStartBlock,  fatTable.serialize());
 
-        if(cur.startBlock == dir.startBlock || cur.startBlock == parent.startBlock){
+        if(cur.getStartBlock() == dir.getStartBlock() || cur.getStartBlock() == parent.getStartBlock()){
             cur = parent;
         }
     }
@@ -140,12 +150,17 @@ public class FileSystem {
             throw new RuntimeException("Directory with name : "+newName+" alreadye exists.");
         }
         Directory dir = getDirectory(oldName);
-        dir.name = newName;
-        disk.writeBlock(dir.startBlock, dir.serialize());
+        dir.setName(newName);
+        disk.writeBlock(dir.getStartBlock(), dir.serialize());
     }
 
+    public void displayDirectoryInfo(){
+        System.out.println("Created : "+cur.getCreation());
+        System.out.println("Contains : "+cur.getSubFiles()+" files, "+cur.getSubFolders()+" folders");
+        System.out.println("Owner : "+cur.getOwner());
+    }
 
-    public void createFile(String name){
+    public void createFile(String name, String currentUser){
         if(!checkValidName(name, true)){
             throw new IllegalArgumentException("Invalid file name: " + name);
         }
@@ -158,13 +173,17 @@ public class FileSystem {
         byte[] serializedFatTable = fatTable.serialize();
         disk.writeBlock(sb.fatStartBlock, serializedFatTable);
 
-        MyFile newFile = new MyFile(name, startBlock, cur.startBlock, 0);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        String currentDateTime = LocalDateTime.now().format(formatter);
+
+        MyFile newFile = new MyFile(name, startBlock, cur.getStartBlock(), 0, currentDateTime, currentDateTime, currentDateTime,currentUser);
         byte[] serializedNewFile = newFile.serialize();
         disk.writeBlock(startBlock, serializedNewFile);
 
-        cur.childrenBlocks.add(startBlock);
+        cur.getChildrenBlocks().add(startBlock);
+        cur.setSubFiles(cur.getSubFiles()+1);
         byte[] serializedCurDir = cur.serialize();
-        disk.writeBlock(cur.startBlock, serializedCurDir);
+        disk.writeBlock(cur.getStartBlock(), serializedCurDir);
     }
 
     public void writeFile(String name, byte[] data){
@@ -172,7 +191,7 @@ public class FileSystem {
             throw new IllegalArgumentException("Data cannot be null or empty.");
         }
         MyFile file = (MyFile)resolvePath(name);
-        int startBlock = file.startBlock;
+        int startBlock = file.getStartBlock();
         fatTable.freeBlocks(fatTable.getNextBlock(startBlock));
         int curBlock = fatTable.getFreeBlock();
         fatTable.setNextBlock(startBlock, curBlock);
@@ -194,8 +213,12 @@ public class FileSystem {
                 fatTable.setEOF(curBlock);
             }
         }
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        String currentDateTime = LocalDateTime.now().format(formatter);
 
-        file.size = dataSize;
+        file.setSize(dataSize);
+        file.setAccessed(currentDateTime);
+        file.setModified(currentDateTime);
         byte[] serializedFile = file.serialize();
         disk.writeBlock(startBlock, serializedFile);
 
@@ -205,17 +228,23 @@ public class FileSystem {
 
     public byte[] readFile(String name){
         MyFile file = (MyFile)resolvePath(name);
-        int startBlock = file.startBlock;
-        byte[] fileData = new byte[file.size];
+        int startBlock = file.getStartBlock();
+        byte[] fileData = new byte[file.getSize()];
         int bytesRead = 0;
         int curBlock = fatTable.getNextBlock(startBlock);
-        while(curBlock != -1 && bytesRead < file.size){
+        while(curBlock != -1 && bytesRead < file.getSize()){
             byte[] blockData = disk.readBlock(curBlock);
-            int blockSize = Math.min(sb.blockSize, file.size - bytesRead);
+            int blockSize = Math.min(sb.blockSize, file.getSize() - bytesRead);
             System.arraycopy(blockData, 0, fileData, bytesRead, blockSize);
             bytesRead += blockSize;
             curBlock = fatTable.getNextBlock(curBlock);
         }
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        String currentDateTime = LocalDateTime.now().format(formatter);
+        
+        file.setAccessed(currentDateTime);
+        disk.writeBlock(startBlock, file.serialize());
+
         return fileData;
     }
 
@@ -224,7 +253,7 @@ public class FileSystem {
             throw new RuntimeException("File with name : "+name+" does not exist.");
         }
         MyFile file = getFile(name);
-        int startBlock = file.startBlock;
+        int startBlock = file.getStartBlock();
         int curBlock = startBlock;
 
         while(true){
@@ -235,7 +264,7 @@ public class FileSystem {
 
         int bytesWritten = 0;
         int dataSize = data.length;
-        int lastBlockSize = file.size % sb.blockSize;
+        int lastBlockSize = file.getSize() % sb.blockSize;
 
         if(lastBlockSize > 0){
             byte[] lastBlockData = disk.readBlock(curBlock);
@@ -256,7 +285,13 @@ public class FileSystem {
         }
 
         fatTable.setEOF(curBlock);
-        file.size += dataSize;
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+        String currentDateTime = LocalDateTime.now().format(formatter);
+
+        file.setSize(file.getSize()+dataSize);
+        file.setAccessed(currentDateTime);
+        file.setModified(currentDateTime);
         disk.writeBlock(startBlock, file.serialize());
         disk.writeBlock(sb.fatStartBlock, fatTable.serialize());
     }
@@ -266,13 +301,14 @@ public class FileSystem {
             throw new RuntimeException("File with name : "+name+" does not exist.");
         }
         MyFile file = getFile(name);
-        int startBlock = file.startBlock;
+        int startBlock = file.getStartBlock();
 
         int curBlock = startBlock;
         fatTable.freeBlocks(curBlock);
 
-        cur.childrenBlocks.remove((Integer)startBlock);
-        disk.writeBlock(cur.startBlock, cur.serialize());
+        cur.getChildrenBlocks().remove((Integer)startBlock);
+        cur.setSubFiles(cur.getSubFiles()-1);
+        disk.writeBlock(cur.getStartBlock(), cur.serialize());
 
         disk.writeBlock(startBlock, new byte[sb.blockSize]);
 
@@ -288,8 +324,8 @@ public class FileSystem {
             throw new RuntimeException("File with name : "+newName+" already exists.");
         }
         MyFile file = getFile(oldname);
-        file.name = newName;
-        disk.writeBlock(file.startBlock, file.serialize());
+        file.setName(newName);
+        disk.writeBlock(file.getStartBlock(), file.serialize());
     }
 
     public void moveFile(String oldPath, String newPath){
@@ -298,7 +334,7 @@ public class FileSystem {
         String newFileName = getFileName(newPath);
         String newDirPath = getParentPath(newPath);
 
-        Directory targetDir = newDirPath.equals(cur.name) ? cur:(Directory)resolvePath(newDirPath);
+        Directory targetDir = newDirPath.equals(cur.getName()) ? cur:(Directory)resolvePath(newDirPath);
 
         if(fileExists(newFileName)){
             cur = current;
@@ -306,26 +342,28 @@ public class FileSystem {
         }
 
         Directory oldParent = (Directory)getParentDirectory(file, false);
-        if(oldParent.name.equals(targetDir.name)){
-            renameFile(file.name, newFileName);
+        if(oldParent.getName().equals(targetDir.getName())){
+            renameFile(file.getName(), newFileName);
             return;
         }
-        oldParent.childrenBlocks.remove((Integer)file.startBlock);
-        disk.writeBlock(oldParent.startBlock, oldParent.serialize());
+        oldParent.getChildrenBlocks().remove((Integer)file.getStartBlock());
+        oldParent.setSubFiles(oldParent.getSubFiles()-1);
+        disk.writeBlock(oldParent.getStartBlock(), oldParent.serialize());
 
-        file.name = newFileName;
-        file.parentBlock = targetDir.startBlock;
-        disk.writeBlock(file.startBlock, file.serialize());
+        file.setName(newFileName);
+        file.setParentBlock(targetDir.getStartBlock());
+        disk.writeBlock(file.getStartBlock(), file.serialize());
 
-        targetDir.childrenBlocks.add(file.startBlock);
-        disk.writeBlock(targetDir.startBlock, targetDir.serialize());
+        targetDir.getChildrenBlocks().add(file.getStartBlock());
+        targetDir.setSubFiles(targetDir.getSubFiles()+1);
+        disk.writeBlock(targetDir.getStartBlock(), targetDir.serialize());
     }
 
-    public void copyFile(String oldPath, String newPath){
+    public void copyFile(String oldPath, String newPath, String currentUser){
         MyFile file = (MyFile)resolvePath(oldPath);
         
-        int curBlock = fatTable.getNextBlock(file.startBlock);
-        int fileSize = file.size;
+        int curBlock = fatTable.getNextBlock(file.getStartBlock());
+        int fileSize = file.getSize();
         byte[] data = new byte[fileSize];
         int bytesWritten = 0;
         while (bytesWritten < fileSize && curBlock != -1) {
@@ -339,7 +377,7 @@ public class FileSystem {
         String newFileName = getFileName(newPath);
         String newDirPath = getParentPath(newPath);
 
-        Directory targetDir = newDirPath.equals(cur.name) ? cur:(Directory)resolvePath(newDirPath);
+        Directory targetDir = newDirPath.equals(cur.getName()) ? cur:(Directory)resolvePath(newDirPath);
 
         Directory current = cur;
         if(fileExists(newFileName)){
@@ -348,11 +386,23 @@ public class FileSystem {
         }
         
         cur = targetDir;
-        createFile(newFileName);
+        createFile(newFileName, currentUser);
+        if(data.length != 0 && data != null)
         writeFile(newFileName, data);
         cur = current;
     }
 
+    public void displayFileInfo(String name){
+        if(!fileExists(name)){
+            throw new RuntimeException("File with name : "+name+" does not exist.");
+        }
+        MyFile file = getFile(name);
+        System.out.println("File Size : "+file.getSize()+" bytes");
+        System.out.println("Created : "+file.getCreation());
+        System.out.println("Modified : "+file.getModified());
+        System.out.println("Accessed : "+file.getAccessed());
+        System.out.println("Owner : "+file.getOwner());
+    }
 
     // Helper functions
     private Object resolvePath(String path){
@@ -370,7 +420,7 @@ public class FileSystem {
                 continue;
             }
             if(part.equals("..")){
-                if(currentDir.parentBlock == -1){ind++;  continue;}
+                if(currentDir.getParentBlock() == -1){ind++;  continue;}
                 currentDir = (Directory)getParentDirectory(currentDir, false);
             }
             else{
@@ -393,23 +443,25 @@ public class FileSystem {
     }
 
     private Directory getDirectory(String name){
-        for(int block:cur.childrenBlocks){
+        for(int block:cur.getChildrenBlocks()){
             byte[] data = disk.readBlock(block);
-            Directory dir = Directory.deserialize(data);
-            String dirName = dir.name;
-            if(dirName.equals(name)){
-                return dir;
+            if(ByteBuffer.wrap(data).getInt() == 0){
+                Directory dir = Directory.deserialize(data);
+                String dirName = dir.getName();
+                if(dirName.equals(name)){
+                    return dir;
+                }
             }
         }
         return null;
     }
 
     private Directory getDirectory(String name, Directory current){
-        for(int block:current.childrenBlocks){
+        for(int block:current.getChildrenBlocks()){
             byte[] data = disk.readBlock(block);
             if(ByteBuffer.wrap(data).getInt() == 0){
                 Directory dir = Directory.deserialize(data);
-                String dirName = dir.name;
+                String dirName = dir.getName();
                 if(dirName.equals(name)){
                     return dir;
                 }
@@ -421,12 +473,12 @@ public class FileSystem {
     private Directory getParentDirectory(Object cur, boolean isDirectory){
         if(isDirectory){
             Directory current = (Directory)cur;
-            int parentBlock = current.parentBlock;
+            int parentBlock = current.getParentBlock();
             return Directory.deserialize(disk.readBlock(parentBlock));
         }
         else{
             MyFile file = (MyFile)cur;
-            int parentBlock = file.parentBlock;
+            int parentBlock = file.getParentBlock();
             return Directory.deserialize(disk.readBlock(parentBlock));
         }
     }
@@ -436,11 +488,11 @@ public class FileSystem {
     }
 
     private MyFile getFile(String name){
-        for(int block:cur.childrenBlocks){
+        for(int block:cur.getChildrenBlocks()){
             byte[] data = disk.readBlock(block);
             if(ByteBuffer.wrap(data).getInt() == 1){
                 MyFile file = MyFile.deserialize(data);
-                String fileName = file.name;
+                String fileName = file.getName();
                 if(fileName.equals(name)){
                     return file;
                 }
@@ -450,12 +502,14 @@ public class FileSystem {
     }
 
     private MyFile getFile(String name, Directory cur){
-        for(int block:cur.childrenBlocks){
+        for(int block:cur.getChildrenBlocks()){
             byte[] data = disk.readBlock(block);
-            MyFile file = MyFile.deserialize(data);
-            String fileName = file.name;
-            if(fileName.equals(name)){
-                return file;
+            if(ByteBuffer.wrap(data).getInt() == 1){
+                MyFile file = MyFile.deserialize(data);
+                String fileName = file.getName();
+                if(fileName.equals(name)){
+                    return file;
+                }
             }
         }
         return null;
@@ -495,7 +549,7 @@ public class FileSystem {
     private String getParentPath(String path){
         int lastSlash = path.lastIndexOf('/');
         if(lastSlash == 0)  return "/";
-        if(lastSlash < 0)  return cur.name;
+        if(lastSlash < 0)  return cur.getName();
         return path.substring(0, lastSlash);
     }
 }
