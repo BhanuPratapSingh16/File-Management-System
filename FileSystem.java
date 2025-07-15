@@ -68,13 +68,18 @@ public class FileSystem {
         return cur.getName();
     } 
     
-    public void createDirectory(String name, String currentUser){
+    public void createDirectory(String name, String currentUser, String userName){
         if(!checkValidName(name, false)){
             throw new IllegalArgumentException("Invalid directory name: " + name);
         }
         if(dirExists(name)){
             throw new RuntimeException("Directory with name : "+name+" already exists.");
         }
+
+        if(!hasPermission(cur, currentUser, 'w', true)){
+            throw new RuntimeException("Permission denied. Owner access required");
+        }
+
         int startBlock = fatTable.getFreeBlock();
         fatTable.setEOF(startBlock);
         byte[] serializedFatTable = fatTable.serialize();
@@ -83,7 +88,7 @@ public class FileSystem {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
         String currentDateTime = LocalDateTime.now().format(formatter);
 
-        Directory newDirectory = new Directory(name, startBlock, cur.getStartBlock(), currentUser);
+        Directory newDirectory = new Directory(name, startBlock, cur.getStartBlock(), userName);
         newDirectory.setCreation(currentDateTime);
         newDirectory.setSubFiles(0);
         newDirectory.setSubFolders(0);
@@ -102,8 +107,13 @@ public class FileSystem {
         save();
     }
 
-    public void listDirectory(){
+    public void listDirectory(String userName){
         System.out.println("Listing files and directories of : "+cur.getName());
+
+        if(!hasPermission(cur, userName, 'r', true)){
+            throw new RuntimeException("Permission denied. Owner access required");
+        }
+        
         for(int block:cur.getChildrenBlocks()){
             byte[] dirData = disk.readBlock(block);
             if(ByteBuffer.wrap(dirData).getInt() == 0){
@@ -117,7 +127,7 @@ public class FileSystem {
         }
     }
 
-    public void deleteDirectory(String name){
+    public void deleteDirectory(String name, String currentUser){
         Directory current = cur;
         Directory dir = (Directory)resolvePath(name);
         cur = current;
@@ -126,6 +136,10 @@ public class FileSystem {
         }
         if(dir.getChildrenBlocks().size()>0){
             throw new RuntimeException("Cannot delete Directory : "+dir.getName()+" because it is not empty");
+        }
+
+        if(!hasPermission(cur, currentUser, 'w', true)){
+            throw new RuntimeException("Permission denied. Owner access required");
         }
         
         disk.writeBlock(dir.getStartBlock(), new byte[sb.blockSize]);
@@ -142,13 +156,17 @@ public class FileSystem {
         }
     }
 
-    public void renameDirectory(String oldName, String newName){
+    public void renameDirectory(String oldName, String newName, String currentUser){
         if(!dirExists(oldName)){
             throw new RuntimeException("Directory with name "+oldName+" does not exists");
         }
         if(dirExists(newName)){
             throw new RuntimeException("Directory with name : "+newName+" alreadye exists.");
         }
+        if(!hasPermission(cur, currentUser, 'w', true)){
+            throw new RuntimeException("Permission denied. Owner access required");
+        }
+        
         Directory dir = getDirectory(oldName);
         dir.setName(newName);
         disk.writeBlock(dir.getStartBlock(), dir.serialize());
@@ -166,6 +184,9 @@ public class FileSystem {
         }
         if(fileExists(name)){
             throw new RuntimeException("File with name : "+name+" already exists.");
+        }
+        if(!hasPermission(cur, currentUser, 'w', true)){
+            throw new RuntimeException("Permission denied. Owner access required");
         }
         int startBlock = fatTable.getFreeBlock();
 
@@ -186,11 +207,14 @@ public class FileSystem {
         disk.writeBlock(cur.getStartBlock(), serializedCurDir);
     }
 
-    public void writeFile(String name, byte[] data){
+    public void writeFile(String name, byte[] data, String currentUser){
         if(data == null || data.length == 0){
             throw new IllegalArgumentException("Data cannot be null or empty.");
         }
         MyFile file = (MyFile)resolvePath(name);
+        if(!hasPermission(file, file.getOwner(), 'w', false)){
+            throw new RuntimeException("Permission denied. Owner access required");
+        }
         int startBlock = file.getStartBlock();
         fatTable.freeBlocks(fatTable.getNextBlock(startBlock));
         int curBlock = fatTable.getFreeBlock();
@@ -228,6 +252,11 @@ public class FileSystem {
 
     public byte[] readFile(String name){
         MyFile file = (MyFile)resolvePath(name);
+
+        if(!hasPermission(file, file.getOwner(), 'r', false)){
+            throw new RuntimeException("Permission denied. Owner access required");
+        }
+
         int startBlock = file.getStartBlock();
         byte[] fileData = new byte[file.getSize()];
         int bytesRead = 0;
@@ -248,11 +277,16 @@ public class FileSystem {
         return fileData;
     }
 
-    public void appendFile(String name, byte[] data){
+    public void appendFile(String name, byte[] data, String currentUser){
         if(!fileExists(name)){
             throw new RuntimeException("File with name : "+name+" does not exist.");
         }
         MyFile file = getFile(name);
+        
+        if(!hasPermission(file, file.getOwner(), 'w', false)){
+            throw new RuntimeException("Permission denied. Owner access required");
+        }
+
         int startBlock = file.getStartBlock();
         int curBlock = startBlock;
 
@@ -296,13 +330,17 @@ public class FileSystem {
         disk.writeBlock(sb.fatStartBlock, fatTable.serialize());
     }
 
-    public void deleteFile(String name){
+    public void deleteFile(String name, String userName){
         if(!fileExists(name)){
             throw new RuntimeException("File with name : "+name+" does not exist.");
         }
         MyFile file = getFile(name);
-        int startBlock = file.getStartBlock();
 
+        if(!hasPermission(cur, userName, 'w', true)){
+            throw new RuntimeException("Permission denied. Owner access required.");
+        }
+        
+        int startBlock = file.getStartBlock();
         int curBlock = startBlock;
         fatTable.freeBlocks(curBlock);
 
@@ -316,7 +354,7 @@ public class FileSystem {
     }
 
 
-    public void renameFile(String oldname, String newName){
+    public void renameFile(String oldname, String newName, String userName){
         if(!fileExists(oldname)){
             throw new RuntimeException("File with oldname : "+oldname+" does not exist.");
         }
@@ -324,11 +362,16 @@ public class FileSystem {
             throw new RuntimeException("File with name : "+newName+" already exists.");
         }
         MyFile file = getFile(oldname);
+
+        if(!hasPermission(cur, userName, 'w', true)){
+            throw new RuntimeException("Permission denied. Owner access required.");
+        }
+
         file.setName(newName);
         disk.writeBlock(file.getStartBlock(), file.serialize());
     }
 
-    public void moveFile(String oldPath, String newPath){
+    public void moveFile(String oldPath, String newPath, String userName){
         Directory current = cur;
         MyFile file = (MyFile)resolvePath(oldPath);
         String newFileName = getFileName(newPath);
@@ -342,8 +385,13 @@ public class FileSystem {
         }
 
         Directory oldParent = (Directory)getParentDirectory(file, false);
+
+        if(!hasPermission(oldParent, userName, 'w', true) || !hasPermission(targetDir, userName, 'w', true)){
+            throw new RuntimeException("Permission denied.");
+        }
+
         if(oldParent.getName().equals(targetDir.getName())){
-            renameFile(file.getName(), newFileName);
+            renameFile(file.getName(), newFileName, userName);
             return;
         }
         oldParent.getChildrenBlocks().remove((Integer)file.getStartBlock());
@@ -388,7 +436,7 @@ public class FileSystem {
         cur = targetDir;
         createFile(newFileName, currentUser);
         if(data.length != 0 && data != null)
-        writeFile(newFileName, data);
+        writeFile(newFileName, data, currentUser);
         cur = current;
     }
 
@@ -421,7 +469,7 @@ public class FileSystem {
             }
             if(part.equals("..")){
                 if(currentDir.getParentBlock() == -1){ind++;  continue;}
-                currentDir = (Directory)getParentDirectory(currentDir, false);
+                currentDir = (Directory)getParentDirectory(currentDir, true);
             }
             else{
                 Directory nextDir = getDirectory(part, currentDir);
@@ -551,5 +599,27 @@ public class FileSystem {
         if(lastSlash == 0)  return "/";
         if(lastSlash < 0)  return cur.getName();
         return path.substring(0, lastSlash);
+    }
+
+    private boolean hasPermission(Object obj, String userName, char mode, boolean isDir){
+        String perms;
+        String owner;
+
+        if(isDir){
+            Directory dir = (Directory) obj;
+            perms = dir.getPermissions();
+            owner = dir.getOwner();
+        }
+        else{
+            MyFile file = (MyFile) obj;
+            perms = file.getPermissions();
+            owner = file.getOwner();
+        }
+        int index = owner.equals(userName)?0:3;
+        for(int i=index;i<index+3;i++){
+            if(perms.charAt(i) == mode)
+                return true;
+        }
+        return false;
     }
 }
