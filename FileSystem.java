@@ -1,6 +1,8 @@
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 import FAT.Directory;
 import FAT.FatTable;
@@ -110,7 +112,7 @@ public class FileSystem {
     public void listDirectory(String userName){
         System.out.println("Listing files and directories of : "+cur.getName());
 
-        if(!hasPermission(cur, userName, 'r', true)){
+        if(!hasPermission(cur, userName, 'x', true)){
             throw new RuntimeException("Permission denied. Owner access required");
         }
         
@@ -138,12 +140,12 @@ public class FileSystem {
             throw new RuntimeException("Cannot delete Directory : "+dir.getName()+" because it is not empty");
         }
 
-        if(!hasPermission(cur, currentUser, 'w', true)){
+        Directory parent = (Directory)getParentDirectory(dir, true);
+
+        if(!hasPermission(parent, currentUser, 'w', true)){
             throw new RuntimeException("Permission denied. Owner access required");
         }
         
-        disk.writeBlock(dir.getStartBlock(), new byte[sb.blockSize]);
-        Directory parent = (Directory)getParentDirectory(dir, true);
         parent.getChildrenBlocks().remove((Integer)dir.getStartBlock());
         parent.setSubFolders(parent.getSubFolders()-1);
         disk.writeBlock(parent.getStartBlock(), parent.serialize());
@@ -212,7 +214,7 @@ public class FileSystem {
             throw new IllegalArgumentException("Data cannot be null or empty.");
         }
         MyFile file = (MyFile)resolvePath(name);
-        if(!hasPermission(file, file.getOwner(), 'w', false)){
+        if(!hasPermission(file, currentUser, 'w', false)){
             throw new RuntimeException("Permission denied. Owner access required");
         }
         int startBlock = file.getStartBlock();
@@ -250,10 +252,10 @@ public class FileSystem {
         disk.writeBlock(sb.fatStartBlock, serializedFatTable);
     }
 
-    public byte[] readFile(String name){
+    public byte[] readFile(String name, String currentUser){
         MyFile file = (MyFile)resolvePath(name);
 
-        if(!hasPermission(file, file.getOwner(), 'r', false)){
+        if(!hasPermission(file, currentUser, 'r', false)){
             throw new RuntimeException("Permission denied. Owner access required");
         }
 
@@ -283,7 +285,7 @@ public class FileSystem {
         }
         MyFile file = getFile(name);
         
-        if(!hasPermission(file, file.getOwner(), 'w', false)){
+        if(!hasPermission(file, currentUser, 'w', false)){
             throw new RuntimeException("Permission denied. Owner access required");
         }
 
@@ -335,22 +337,25 @@ public class FileSystem {
             throw new RuntimeException("File with name : "+name+" does not exist.");
         }
         MyFile file = getFile(name);
+        Directory parentDirectory = getParentDirectory(file, false);
 
-        if(!hasPermission(cur, userName, 'w', true)){
+        if(!hasPermission(parentDirectory, userName, 'w', true)){
             throw new RuntimeException("Permission denied. Owner access required.");
         }
         
         int startBlock = file.getStartBlock();
         int curBlock = startBlock;
         fatTable.freeBlocks(curBlock);
-
-        cur.getChildrenBlocks().remove((Integer)startBlock);
-        cur.setSubFiles(cur.getSubFiles()-1);
-        disk.writeBlock(cur.getStartBlock(), cur.serialize());
-
-        disk.writeBlock(startBlock, new byte[sb.blockSize]);
+        
+        parentDirectory.getChildrenBlocks().remove((Integer)startBlock);
+        parentDirectory.setSubFiles(parentDirectory.getSubFiles()-1);
+        disk.writeBlock(parentDirectory.getStartBlock(), parentDirectory.serialize());
 
         disk.writeBlock(sb.fatStartBlock, fatTable.serialize());
+
+        if(cur.getStartBlock() == parentDirectory.getStartBlock()){
+            cur = parentDirectory;
+        }
     }
 
 
@@ -450,6 +455,26 @@ public class FileSystem {
         System.out.println("Modified : "+file.getModified());
         System.out.println("Accessed : "+file.getAccessed());
         System.out.println("Owner : "+file.getOwner());
+    }
+
+    public void recursiveDelete(String dirName, String currentUser){
+        Directory current = cur;
+        Directory dir = (Directory)resolvePath(dirName);
+        
+        List<Integer> childrenBlocks = new ArrayList<>(dir.getChildrenBlocks());
+        for(int block:childrenBlocks){
+            byte[] blockData = disk.readBlock(block);
+            if(ByteBuffer.wrap(blockData).getInt() == 1){
+                MyFile file = MyFile.deserialize(blockData);
+                deleteFile(file.getName(), currentUser);
+            }
+            else{
+                Directory subDir = Directory.deserialize(blockData);
+                recursiveDelete(subDir.getName(), currentUser);
+            }
+        }
+        cur = current;
+        deleteDirectory(dirName, currentUser);
     }
 
     // Helper functions
@@ -568,6 +593,9 @@ public class FileSystem {
     }
 
     private boolean checkValidName(String name, boolean isFile){
+        if(name.startsWith(" ")){
+            throw new IllegalArgumentException("Invalid name : "+name);
+        }
         if(name == null || name.isEmpty() || name.contains("/") || name.contains("\\")) {
             throw new IllegalArgumentException("Invalid directory name: " + name);
         }
@@ -602,6 +630,9 @@ public class FileSystem {
     }
 
     private boolean hasPermission(Object obj, String userName, char mode, boolean isDir){
+        if(userName.equals("root")){
+            return true;
+        }
         String perms;
         String owner;
 
