@@ -7,7 +7,7 @@ public class Main {
         Disk disk = new Disk(2048, 100);
         FileSystem fs = FileSystem.mount(disk, 2048, 100);
         UserManager userManager = new UserManager();
-        userManager.loadUsers("users.txt");
+        userManager.loadUsers("C:\\Users\\Bhanu Pratap Singh\\Projects\\File System\\fs\\users.txt");
         run(disk, fs, userManager);
     }
 
@@ -43,7 +43,7 @@ public class Main {
                 System.out.print("Enter password : ");
                 String password = reader.readLine().trim();
                 try{
-                    userManager.signup(userName, password, "users.txt");
+                    userManager.signup(userName, password, "C:\\Users\\Bhanu Pratap Singh\\Projects\\File System\\fs\\users.txt");
                     System.out.println("Successful signup and login");
                     fs.createDirectory(userName, "root", userName);
                     fs.changeDirectory(userName);
@@ -56,6 +56,7 @@ public class Main {
             }
         }
 
+        String currentUser = userManager.getCurrentUser();
         System.out.println("Type 'help' for commands list");
         while(true){
             System.out.print(">> ");
@@ -91,10 +92,14 @@ public class Main {
                         System.out.println("Usage: ls");
                         break;
                     }
-                    fs.listDirectory(userManager.getCurrentUser());
+                    fs.listDirectory(currentUser);
                     break;
                 }
                 case "mkdir":{
+                    if(parts.length == 1){
+                        System.out.println("Usage: mkdir <dir_name>");
+                        break;
+                    }
                     String newDirName = "";
                     for(int i=1;i<parts.length;i++){
                         if(i==1)    newDirName = parts[i];
@@ -102,7 +107,7 @@ public class Main {
                             newDirName += " "+parts[i];
                         }
                     }
-                    fs.createDirectory(newDirName, userManager.getCurrentUser(), userManager.getCurrentUser());
+                    fs.createDirectory(newDirName, currentUser, currentUser);
                     break;
                 }
                 case "rmdir":{
@@ -113,7 +118,22 @@ public class Main {
                             dirName += " "+parts[i];
                         }
                     }
-                    fs.deleteDirectory(dirName, userManager.getCurrentUser());
+                    fs.deleteDirectory(dirName, currentUser);
+                    break;
+                }
+                case "rmdir-":{
+                    if(parts.length == 1){
+                        System.out.println("Usage: rmdir- <dir_name>");
+                        break;
+                    }
+                    String dirName = "";
+                    for(int i=1;i<parts.length;i++){
+                        if(i==1)    dirName = parts[i];
+                        else{
+                            dirName += " "+parts[i];
+                        }
+                    }
+                    fs.recursiveDelete(dirName, currentUser);
                     break;
                 }
                 case "infodir":{
@@ -130,7 +150,7 @@ public class Main {
                         break;
                     }
                     String newFileName = parts[1];
-                    fs.createFile(newFileName, userManager.getCurrentUser());
+                    fs.createFile(newFileName, currentUser);
                     break;
                 }
                 case "cat":{
@@ -139,7 +159,7 @@ public class Main {
                         break;
                     }
                     String fileName = parts[1];
-                    byte[] data = fs.readFile(fileName);
+                    byte[] data = fs.readFile(fileName, currentUser);
                     System.out.println("Contents of " + fileName + ":");
                     if (data != null) {
                         System.out.println(new String(data));
@@ -165,7 +185,7 @@ public class Main {
                         fileContent += line + "\n";
                     }
                     fileContent = fileContent.substring(0, fileContent.length()-1);
-                    fs.writeFile(fileName, fileContent.getBytes(), userManager.getCurrentUser());
+                    fs.writeFile(fileName, fileContent.getBytes(), currentUser);
                     break;
                 }
                 case "rm":{
@@ -174,7 +194,7 @@ public class Main {
                         break;
                     }
                     String fileName = parts[1];
-                    fs.deleteFile(fileName, userManager.getCurrentUser());
+                    fs.deleteFile(fileName, currentUser);
                     break;
                 }
                 case "ren":{
@@ -184,7 +204,7 @@ public class Main {
                     }
                     String oldName = parts[1];
                     String newName = parts[2];
-                    fs.renameFile(oldName, newName, userManager.getCurrentUser());
+                    fs.renameFile(oldName, newName, currentUser);
                     break;
                 }
                 case "append":{
@@ -204,7 +224,7 @@ public class Main {
                         appendData += line + "\n";
                     }
                     appendData = appendData.substring(0, appendData.length()-1);
-                    fs.appendFile(fileName, appendData.getBytes(), userManager.getCurrentUser());
+                    fs.appendFile(fileName, appendData.getBytes(), currentUser);
                     break;
                 }
                 case "mv":{
@@ -215,7 +235,7 @@ public class Main {
                     }
                     String oldPath = split[1];
                     String newPath = split[3];
-                    fs.moveFile(oldPath, newPath, userManager.getCurrentUser());
+                    fs.moveFile(oldPath, newPath, currentUser);
                     break;
                 }
                 case "cp":{
@@ -226,7 +246,7 @@ public class Main {
                     }
                     String oldPath = split[1];
                     String newPath = split[3];
-                    fs.copyFile(oldPath, newPath, userManager.getCurrentUser());
+                    fs.copyFile(oldPath, newPath, currentUser);
                     break;
                 }
                 case "info":{
@@ -237,6 +257,14 @@ public class Main {
                     String fileName = parts[1];
                     fs.displayFileInfo(fileName);
                     break;
+                }
+                case "rmuser-":{
+                    System.out.print("Enter your password : ");
+                    String password = reader.readLine();
+
+                    userManager.removeUser(currentUser, password);
+                    fs.recursiveDelete("/"+currentUser, "root");
+                    System.exit(0);
                 }
                 case "help":
                     System.out.println("Available commands:");
@@ -261,8 +289,9 @@ public class Main {
                     break;
                 }
             }
-            catch(RuntimeException e){
+            catch(Exception e){
                 System.out.println("Error : "+e.getMessage());
+                // e.printStackTrace();
             }
         }
     }
