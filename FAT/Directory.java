@@ -17,8 +17,6 @@ public class Directory {
     private String creation = "";
     private int subFiles = 0;
     private int subFolders = 0;
-    private final String owner;
-    private String permissions;
 
     public String getName() {
         return name;
@@ -46,14 +44,6 @@ public class Directory {
 
     public int getSubFolders() {
         return subFolders;
-    }
-
-    public String getOwner() {
-        return owner;
-    }
-
-    public String getPermissions() {
-        return permissions;
     }
 
     public String getCreation() {
@@ -88,15 +78,11 @@ public class Directory {
         this.subFolders = subFolders;
     }
 
-    public void setPermissions(String permissions) {
-        this.permissions = permissions;
-    }
-
     public void setCreation(String creation) {
         this.creation = creation;
     }
 
-    public Directory(String name, int startBlock, int parentBlock, String owner) {
+    public Directory(String name, int startBlock, int parentBlock) {
         this.name = name;
         this.startBlock = startBlock;
         this.parentBlock = parentBlock;
@@ -105,8 +91,6 @@ public class Directory {
         } else {
             this.isRoot = false;
         }
-        this.owner = owner;
-        this.permissions = "rwxr-x"; // owner - all, others - read and execute
     }
 
     public byte[] serialize() {
@@ -117,7 +101,6 @@ public class Directory {
             dos.writeInt(parentBlock);
             dos.writeUTF(name);
             dos.writeInt(startBlock);
-            dos.writeUTF(owner);
 
             dos.writeBoolean(isRoot);
 
@@ -128,8 +111,6 @@ public class Directory {
             dos.writeUTF(creation);
             dos.writeInt(subFiles);
             dos.writeInt(subFolders);
-
-            dos.writeUTF(permissions);
 
             return baos.toByteArray();
         } catch (IOException e) {
@@ -145,9 +126,8 @@ public class Directory {
             int parentBlock = dis.readInt();
             String name = dis.readUTF();
             int startBlock = dis.readInt();
-            String owner = dis.readUTF();
 
-            Directory directory = new Directory(name, startBlock, parentBlock, owner);
+            Directory directory = new Directory(name, startBlock, parentBlock);
             directory.isRoot = dis.readBoolean();
 
             int childrenCount = dis.readInt();
@@ -157,7 +137,6 @@ public class Directory {
             directory.creation = dis.readUTF();
             directory.subFiles = dis.readInt();
             directory.subFolders = dis.readInt();
-            directory.permissions = dis.readUTF();
 
             return directory;
         } catch (IOException e) {
