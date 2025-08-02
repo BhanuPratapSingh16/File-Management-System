@@ -6,57 +6,11 @@ public class Main {
     public static void main(String[] args) throws IOException {
         Disk disk = new Disk(2048, 100);
         FileSystem fs = FileSystem.mount(disk, 2048, 100);
-        UserManager userManager = new UserManager();
-        userManager.loadUsers("C:\\Users\\Bhanu Pratap Singh\\Projects\\File System\\fs\\users.txt");
-        run(disk, fs, userManager);
+        run(disk, fs);
     }
 
-    public static void run(Disk disk, FileSystem fs, UserManager userManager) throws IOException{
+    public static void run(Disk disk, FileSystem fs) throws IOException{
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        while(true){
-            System.out.print("Choose Login/Signup(l/s) : ");
-            String inp = reader.readLine().toLowerCase().trim();
-            if(inp.length() != 1)   continue;
-            char ch = inp.charAt(0);
-            if(ch == 'l'){
-                System.out.print("Enter user name : ");
-                String userName = reader.readLine().trim();
-                System.out.print("Enter password : ");
-                String password = reader.readLine().trim();
-                if(userManager.login(userName, password)){
-                    System.out.println("Login successful.");
-                    userManager.setCurrentUser(userName);
-                    fs.changeDirectory(userName);
-                    break;
-                }
-                else{
-                    System.out.println("Invalid username or password. Try signup");
-                }
-            }
-            else if(ch == 's'){
-                System.out.print("Enter user name : ");
-                String userName = reader.readLine().trim();
-                if(userManager.userExists(userName)){
-                    System.out.println("User "+userName+" already exists. Try login");
-                    continue;
-                }
-                System.out.print("Enter password : ");
-                String password = reader.readLine().trim();
-                try{
-                    userManager.signup(userName, password, "C:\\Users\\Bhanu Pratap Singh\\Projects\\File System\\fs\\users.txt");
-                    System.out.println("Successful signup and login");
-                    fs.createDirectory(userName, "root", userName);
-                    fs.changeDirectory(userName);
-                    userManager.setCurrentUser(userName);
-                }
-                catch(IOException e){
-                    e.printStackTrace();
-                }
-                break;
-            }
-        }
-
-        String currentUser = userManager.getCurrentUser();
         System.out.println("Type 'help' for commands list");
         while(true){
             System.out.print(">> ");
@@ -92,7 +46,7 @@ public class Main {
                         System.out.println("Usage: ls");
                         break;
                     }
-                    fs.listDirectory(currentUser);
+                    fs.listDirectory();
                     break;
                 }
                 case "mkdir":{
@@ -107,7 +61,7 @@ public class Main {
                             newDirName += " "+parts[i];
                         }
                     }
-                    fs.createDirectory(newDirName, currentUser, currentUser);
+                    fs.createDirectory(newDirName);
                     break;
                 }
                 case "rmdir":{
@@ -118,7 +72,7 @@ public class Main {
                             dirName += " "+parts[i];
                         }
                     }
-                    fs.deleteDirectory(dirName, currentUser);
+                    fs.deleteDirectory(dirName);
                     break;
                 }
                 case "rmdir-":{
@@ -133,7 +87,7 @@ public class Main {
                             dirName += " "+parts[i];
                         }
                     }
-                    fs.recursiveDelete(dirName, currentUser);
+                    fs.recursiveDelete(dirName);
                     break;
                 }
                 case "infodir":{
@@ -150,7 +104,7 @@ public class Main {
                         break;
                     }
                     String newFileName = parts[1];
-                    fs.createFile(newFileName, currentUser);
+                    fs.createFile(newFileName);
                     break;
                 }
                 case "cat":{
@@ -159,7 +113,7 @@ public class Main {
                         break;
                     }
                     String fileName = parts[1];
-                    byte[] data = fs.readFile(fileName, currentUser);
+                    byte[] data = fs.readFile(fileName);
                     System.out.println("Contents of " + fileName + ":");
                     if (data != null) {
                         System.out.println(new String(data));
@@ -185,7 +139,7 @@ public class Main {
                         fileContent += line + "\n";
                     }
                     fileContent = fileContent.substring(0, fileContent.length()-1);
-                    fs.writeFile(fileName, fileContent.getBytes(), currentUser);
+                    fs.writeFile(fileName, fileContent.getBytes());
                     break;
                 }
                 case "rm":{
@@ -194,7 +148,7 @@ public class Main {
                         break;
                     }
                     String fileName = parts[1];
-                    fs.deleteFile(fileName, currentUser);
+                    fs.deleteFile(fileName);
                     break;
                 }
                 case "ren":{
@@ -204,7 +158,7 @@ public class Main {
                     }
                     String oldName = parts[1];
                     String newName = parts[2];
-                    fs.renameFile(oldName, newName, currentUser);
+                    fs.renameFile(oldName, newName);
                     break;
                 }
                 case "append":{
@@ -224,7 +178,7 @@ public class Main {
                         appendData += line + "\n";
                     }
                     appendData = appendData.substring(0, appendData.length()-1);
-                    fs.appendFile(fileName, appendData.getBytes(), currentUser);
+                    fs.appendFile(fileName, appendData.getBytes());
                     break;
                 }
                 case "mv":{
@@ -235,7 +189,7 @@ public class Main {
                     }
                     String oldPath = split[1];
                     String newPath = split[3];
-                    fs.moveFile(oldPath, newPath, currentUser);
+                    fs.moveFile(oldPath, newPath);
                     break;
                 }
                 case "cp":{
@@ -246,7 +200,7 @@ public class Main {
                     }
                     String oldPath = split[1];
                     String newPath = split[3];
-                    fs.copyFile(oldPath, newPath, currentUser);
+                    fs.copyFile(oldPath, newPath);
                     break;
                 }
                 case "info":{
@@ -257,14 +211,6 @@ public class Main {
                     String fileName = parts[1];
                     fs.displayFileInfo(fileName);
                     break;
-                }
-                case "rmuser-":{
-                    System.out.print("Enter your password : ");
-                    String password = reader.readLine();
-
-                    userManager.removeUser(currentUser, password);
-                    fs.recursiveDelete("/"+currentUser, "root");
-                    System.exit(0);
                 }
                 case "help":
                     System.out.println("Available commands:");
