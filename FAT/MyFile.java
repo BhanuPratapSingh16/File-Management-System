@@ -14,8 +14,6 @@ public class MyFile {
     private String creation;
     private String modified;
     private String accessed;
-    private final String owner;
-    private String permissions;
 
     public String getName() {
         return name;
@@ -73,19 +71,7 @@ public class MyFile {
         this.accessed = accessed;
     }
 
-    public String getOwner() {
-        return owner;
-    }
-
-    public String getPermissions() {
-        return permissions;
-    }
-
-    public void setPermissions(String permissions) {
-        this.permissions = permissions;
-    }
-
-    public MyFile(String name, int startBlock, int parentBlock, int size, String creation, String modified, String accessed, String owner) {
+    public MyFile(String name, int startBlock, int parentBlock, int size, String creation, String modified, String accessed) {
         this.name = name;
         this.startBlock = startBlock;
         this.parentBlock = parentBlock;
@@ -93,8 +79,6 @@ public class MyFile {
         this.creation = creation;
         this.modified = modified;
         this.accessed = accessed;
-        this.owner = owner;
-        this.permissions = "rw-r--"; // owner - read and write , others - write
     }
 
     public byte[] serialize() {
@@ -109,8 +93,6 @@ public class MyFile {
             dos.writeUTF(creation);
             dos.writeUTF(modified);
             dos.writeUTF(accessed);
-            dos.writeUTF(owner);
-            dos.writeUTF(permissions);
             return baos.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException("Error during serialization : ", e);
@@ -129,9 +111,7 @@ public class MyFile {
             String creation = dis.readUTF();
             String modified = dis.readUTF();
             String accessed = dis.readUTF();
-            String owner = dis.readUTF();
-            MyFile file = new MyFile(name, startBlock, parentBlock, size, creation, modified, accessed, owner);
-            file.permissions = dis.readUTF();
+            MyFile file = new MyFile(name, startBlock, parentBlock, size, creation, modified, accessed);
             return file;
         } catch (IOException e) {
             throw new RuntimeException("Error during deserialization : ", e);
